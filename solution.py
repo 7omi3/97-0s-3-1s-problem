@@ -54,7 +54,7 @@ def find_ones(arr):
  
     # Logic to find remaining ones if not all were found
     if len(found_indices) == 1:
-        remaining_indices = [i for i in range(0, 39) if i not in excluded_indices] 
+        remaining_indices = [i for i in range(0, 40) if i not in excluded_indices] 
         for i in range(0, len(remaining_indices) - 3, 4):
             comp_result = compare(remaining_indices[i], remaining_indices[i+2])
             if comp_result == ">":
@@ -65,11 +65,11 @@ def find_ones(arr):
                 found_indices.append(remaining_indices[i+3])
             if len(found_indices) == 3:
                 return {"comparisons": comparisons, "total_comparisons": len(comparisons), "found_indices": found_indices}
-            elif len(found_indices) == 1:
-                found_indices.append(remaining_indices[-1])
-                found_indices.append(remaining_indices[-2])
-                return {"comparisons": comparisons, "total_comparisons": len(comparisons), "found_indices": found_indices}
             
+    if len(found_indices) == 1:
+        found_indices.append(remaining_indices[-1])
+        found_indices.append(remaining_indices[-2]) 
+        
     elif len(found_indices) == 0:
         for i in range(40, 97, 6):
             comp_result = compare(i, i+3)
