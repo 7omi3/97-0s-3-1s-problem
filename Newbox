@@ -1,0 +1,82 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+sheet_name = 'Munka1'
+# read
+df = pd.read_excel('comp.xlsx', sheet_name=sheet_name, usecols='A:F', nrows=7) # Adjust range as needed
+print(df)
+
+def create_box_whisker_plots_with_outliers(df):
+    plt.style.use('default')
+    # get number of columns to plot
+    columns = df.columns[1:]
+    num_cols = len(columns)
+    
+    # create the plot with the number of columns dynamically
+    fig, axes = plt.subplots(1, num_cols, figsize=(14, 6), sharey=False)
+    colors = ['#1f8460', '#fb4515', '#e6b6cd', '#dc7820', '#6e3fa3', '#dc7820']
+    
+    # If only one plot, axes will not be an array
+    if num_cols == 1:
+        axes = [axes]
+    
+    # boxplot for each timeframe
+    for i, col in enumerate(columns):
+        box = axes[i].boxplot(
+            df[col], patch_artist=True,
+            boxprops=dict(facecolor=colors[i % len(colors)], color='black', linewidth=3),
+            whiskerprops=dict(color='black', linewidth=2.5),
+            capprops=dict(color='black', linewidth=2.5),
+            medianprops=dict(color='black', linewidth=3),
+            flierprops=dict(marker='o', color='black', markersize=5, markerfacecolor=colors[i % len(colors)]),
+            whis=[0, 100]  # This sets the whiskers to the min and max data points
+        )
+        axes[i].set_title(col, fontsize=16, weight='bold')
+        axes[i].tick_params(axis='y', which='both', labelsize=12, width=1.5)
+        axes[i].set_xticks([])
+        
+        # Set individual y-axis limits
+        min_val = df[col].min()
+        max_val = df[col].max()
+        axes[i].set_ylim([min_val - 0.1 * abs(min_val), max_val + 0.1 * abs(max_val)])
+        
+        # "Our Company" in blue
+        our_company_value = df.loc[df['Company'] == 'Our Company', col].values[0]
+        axes[i].scatter(1, our_company_value, color='blue', s=100, zorder=3)
+        
+        # text for best and worst performing companies
+        min_index = df[col].idxmin()
+        max_index = df[col].idxmax()
+        min_value = df[col].min()
+        max_value = df[col].max()
+        
+        if df.loc[min_index, 'Company'] != 'Our Company':
+            axes[i].text(1.1, min_value, df.loc[min_index, 'Company'], ha='left', va='center', fontsize=12, color='red')
+            axes[i].text(1.1, our_company_value, 'Our Company', ha='left', va='center', fontsize=12, color='Blue')
+        else:
+            axes[i].scatter(1, min_value, color='red', s=100, zorder=3)
+            axes[i].text(1.1, our_company_value, 'Our Company', ha='left', va='center', fontsize=12, color='red')
+        
+        if df.loc[max_index, 'Company'] != 'Our Company':
+            axes[i].text(1.1, max_value, df.loc[max_index, 'Company'], ha='left', va='center', fontsize=12, color='green')
+            axes[i].text(1.1, our_company_value, 'Our Company', ha='left', va='center', fontsize=12, color='Blue')
+        else:
+            axes[i].scatter(1, max_value, color='green', s=100, zorder=3)
+            axes[i].text(1.1, our_company_value, 'Our Company', ha='left', va='center', fontsize=12, color='green')
+    
+    # title
+    fig.suptitle('Revenue Comparison of Companies by Time Frame', fontsize=20, weight='bold')
+    
+    # remove gridline
+    for ax in axes:
+        ax.grid(False)
+    
+    # remove frame
+    for ax in axes:
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+    
+    plt.tight_layout()
+    plt.show()
+
+create_box_whisker_plots_with_outliers(df)
