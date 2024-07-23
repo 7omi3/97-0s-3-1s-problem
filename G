@@ -1,23 +1,81 @@
-import matplotlib.pyplot as plt
+from multiprocessing import Pool
+from PIL import Image
 import numpy as np
+from matplotlib import cm
 
-f = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144]
+RESOLUTION = 2000
+xmin, xmax, ymin, ymax = -2.0, 1.0, -1.5, 1.5
+width = xmax - xmin
+height = ymax - ymin
+CHUNK_SIZE = 1000
+max_iter = 1000
 
-# Create a larger figure with high resolution
-fig, ax = plt.subplots(figsize=(10, 10), dpi=300)
+def buddhabrot(c):
+    z = c
+    trajectory = [c]
+    history = set()
+    for i in range(max_iter):
+        if abs(z) > 4.0:
+            return trajectory
+        if z in history:
+            return []
+        history.add(z)
+        z = z * z + c
+        trajectory.append(z)
+    return []
 
-theta = np.linspace(0, 4 * np.pi, 1000)  # Increase the range for a more interesting curve
-a = 1
-b = 0.1  # Growth factor, adjust for more or less curvature
+def calculate_chunk(i, j):
+    xmin_chunk = xmin + i * width * CHUNK_SIZE / RESOLUTION + width/RESOLUTION/2
+    xmax_chunk = xmin + (i + 1) * width * CHUNK_SIZE / RESOLUTION - width/RESOLUTION/2
+    ymin_chunk = ymin + j * height * CHUNK_SIZE / RESOLUTION + height/RESOLUTION/2
+    ymax_chunk = ymin + (j + 1) * height * CHUNK_SIZE / RESOLUTION - height/RESOLUTION/2
 
-# Logarithmic spiral equation: r = a * e^(b * theta)
-r = a * np.exp(b * theta)
+    r1 = np.linspace(xmin_chunk, xmax_chunk, CHUNK_SIZE)
+    r2 = np.linspace(ymin_chunk, ymax_chunk, CHUNK_SIZE)
+    meshgrid = np.meshgrid(r1, r2)
 
-# Convert polar to Cartesian coordinates
-x = r * np.cos(theta)
-y = r * np.sin(theta)
+    pixels = [(complex(r, i), max_iter) for r, i in zip(np.ravel(meshgrid[0]), np.ravel(meshgrid[1]))]
+    trajectories = [buddhabrot_helper(pixel) for pixel in pixels]
 
-ax.plot(x, y, 'b')
-ax.set_aspect('equal')
+    return trajectories
 
-plt.show()
+def buddhabrot_helper(inputs):
+    c, max_iter = inputs
+    if is_inside_main_bulb(c):
+        return []
+    return buddhabrot(c)
+
+def is_inside_main_bulb(c):
+    q = (c.real - 1/4) * 2 + c.imag * 2
+    return q * (q + (c.real - 1/4)) < c.imag**2 / 4
+
+def calculate_density(trajectories):
+    density = np.zeros((RESOLUTION, RESOLUTION))
+    for trajectory in trajectories:
+        for z in trajectory:
+            x = int((z.real - xmin) * RESOLUTION / width)
+            y = int((z.imag - ymin) * RESOLUTION / height)
+            if 0 <= x < RESOLUTION and 0 <= y < RESOLUTION:
+                density[x, y] += 1
+    return density
+
+def apply_sqrt_log_coloring(density):
+    density = np.sqrt(density)
+    density = np.log10(density + 1)
+    density = density / np.max(density)
+    return density
+
+trajectories = []
+pool = Pool(processes=None)
+for i in range(RESOLUTION // CHUNK_SIZE):
+    for j in range(RESOLUTION // CHUNK_SIZE):
+        chunk_trajectories = calculate_chunk(i, j)
+        trajectories.extend(chunk_trajectories)
+pool.close()
+
+density = calculate_density(trajectories)
+density = apply_sqrt_log_coloring(density)
+color_data = cm.viridis(density)
+image = Image.fromarray((255 * color_data).astype(np.uint8))
+image.save("buddhabrot_traj.png")
+
