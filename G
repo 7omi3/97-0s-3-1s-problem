@@ -3,25 +3,21 @@ import numpy as np
 
 f = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144]
 
-fig, ax = plt.subplots()
-x, y = [0], [0]
-angle = 0
+# Create a larger figure with high resolution
+fig, ax = plt.subplots(figsize=(10, 10), dpi=300)
 
-for i in range(len(f)):
-    theta = np.linspace(angle, angle + np.pi / 2, 100)
-    r = f[i]
-    if i > 0:
-        x_center = x[-1] - r * np.cos(angle)
-        y_center = y[-1] - r * np.sin(angle)
-    else:
-        x_center = x[-1]
-        y_center = y[-1]
-    x_arc = x_center + r * np.cos(theta)
-    y_arc = y_center + r * np.sin(theta)
-    ax.plot(x_arc, y_arc, 'b')
-    x.append(x_arc[-1])
-    y.append(y_arc[-1])
-    angle += np.pi / 2
+theta = np.linspace(0, 4 * np.pi, 1000)  # Increase the range for a more interesting curve
+a = 1
+b = 0.1  # Growth factor, adjust for more or less curvature
 
+# Logarithmic spiral equation: r = a * e^(b * theta)
+r = a * np.exp(b * theta)
+
+# Convert polar to Cartesian coordinates
+x = r * np.cos(theta)
+y = r * np.sin(theta)
+
+ax.plot(x, y, 'b')
 ax.set_aspect('equal')
+
 plt.show()
