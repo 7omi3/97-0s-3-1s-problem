@@ -1,0 +1,30 @@
+import csv
+
+# Input and output file paths
+input_file = 'input.csv'
+output_file = 'filtered_output.csv'
+
+# Open the input CSV file for reading
+with open(input_file, mode='r', newline='') as infile:
+    reader = csv.reader(infile)
+    
+    # Read the header (assuming the first row is the header)
+    header = next(reader)
+    
+    # Create a list to hold rows that start with 'UTLP'
+    filtered_rows = [header]
+    
+    # Iterate through each row in the CSV file
+    for row in reader:
+        # Check if the first element of the row starts with 'UTLP'
+        if row[0].startswith('UTLP'):
+            filtered_rows.append(row)
+
+# Open the output CSV file for writing
+with open(output_file, mode='w', newline='') as outfile:
+    writer = csv.writer(outfile)
+    
+    # Write the filtered rows to the new CSV file
+    writer.writerows(filtered_rows)
+
+print(f"Filtered rows have been saved to {output_file}")
