@@ -1,0 +1,60 @@
+import pandas as pd
+import numpy as np
+
+# Load the Excel file
+file_path = 'perfanal.xlsx'
+sheet_name = 'Raw'
+
+# Read the data from the "Raw" tab
+df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+# Convert the date column to datetime
+df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], dayfirst=True)
+
+# Calculate annualized returns and volatility
+def calculate_annualized_return(data, periods_per_year=12):
+    compounded_growth = (1 + data).prod()
+    n_periods = len(data)
+    annualized_return = compounded_growth ** (periods_per_year / n_periods) - 1
+    return annualized_return * 100  # Convert to percentage
+
+def calculate_annualized_volatility(data, periods_per_year=12):
+    volatility = data.std() * np.sqrt(periods_per_year)
+    return volatility * 100  # Convert to percentage
+
+# Define periods for analysis in years
+periods = {
+    '1 year': 12,
+    '3 year': 36,
+    '5 year': 60,
+    '10 year': 120,
+    '15 year': 180
+}
+
+# Initialize dictionary to store results
+results = {}
+
+# Calculate returns and volatility for each portfolio
+for portfolio in df.columns[1:]:
+    portfolio_data = df[portfolio].dropna()  # Drop missing values
+    results[portfolio] = {}
+    for period_name, period_months in periods.items():
+        if len(portfolio_data) >= period_months:
+            period_data = portfolio_data[-period_months:]  # Get the data for the required period
+            annualized_return = calculate_annualized_return(period_data)
+            annualized_volatility = calculate_annualized_volatility(period_data)
+            results[portfolio][period_name] = {
+                'Return (%)': annualized_return,
+                'Volatility (%)': annualized_volatility
+            }
+        else:
+            results[portfolio][period_name] = {
+                'Return (%)': None,
+                'Volatility (%)': None
+            }
+
+# Print results
+for portfolio, metrics in results.items():
+    print(f"\nPortfolio: {portfolio}")
+    for period, values in metrics.items():
+        print(f"{period}: Return = {values['Return (%)']:.2f}% Volatility = {values['Volatility (%)']:.2f}%")
