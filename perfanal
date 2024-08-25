@@ -101,3 +101,31 @@ for portfolio, metrics in results.items():
             print(f"{metric}: Return = {values['Return (%)']:.2f}% Volatility = {values['Volatility (%)']:.2f}%")
         else:
             print(f"{metric}: {values:.2f}%")
+
+\\\
+def calculate_max_drawdown(data, start_date=None, end_date=None):
+    """
+    Calculate the maximum drawdown for a given data series within a specified timeframe.
+
+    Parameters:
+    - data (pd.Series): A pandas Series containing the returns.
+    - start_date (str or pd.Timestamp, optional): The start date for the calculation.
+    - end_date (str or pd.Timestamp, optional): The end date for the calculation.
+
+    Returns:
+    - max_drawdown (float): The maximum drawdown as a percentage.
+    """
+    # Filter data for the specified timeframe
+    if start_date is not None:
+        data = data[data.index >= pd.to_datetime(start_date)]
+    if end_date is not None:
+        data = data[data.index <= pd.to_datetime(end_date)]
+
+    # Calculate cumulative returns and drawdowns
+    cumulative = (1 + data).cumprod()
+    peak = cumulative.cummax()
+    drawdown = (cumulative - peak) / peak
+    max_drawdown = drawdown.min()
+
+    return max_drawdown * 100  # Convert to percentage
+\\\
