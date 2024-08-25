@@ -102,9 +102,8 @@ for portfolio, metrics in results.items():
         else:
             print(f"{metric}: {values:.2f}%")
 
-\\\
+"""
 def calculate_max_drawdown(data, start_date=None, end_date=None):
-    """
     Calculate the maximum drawdown for a given data series within a specified timeframe.
 
     Parameters:
@@ -114,7 +113,7 @@ def calculate_max_drawdown(data, start_date=None, end_date=None):
 
     Returns:
     - max_drawdown (float): The maximum drawdown as a percentage.
-    """
+
     # Filter data for the specified timeframe
     if start_date is not None:
         data = data[data.index >= pd.to_datetime(start_date)]
@@ -128,4 +127,4 @@ def calculate_max_drawdown(data, start_date=None, end_date=None):
     max_drawdown = drawdown.min()
 
     return max_drawdown * 100  # Convert to percentage
-\\\
+"""
