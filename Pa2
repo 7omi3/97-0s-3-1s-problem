@@ -115,6 +115,13 @@ for portfolio, metrics in results.items():
     print(f"\nPortfolio: {portfolio}")
     for metric, values in metrics.items():
         if isinstance(values, dict):
-            print(f"{metric}: Return = {values['Return (%)']:.2f}% Volatility = {values['Volatility (%)']:.2f}%")
+            if values['Return (%)'] is not None and values['Volatility (%)'] is not None:
+                print(f"{metric}: Return = {values['Return (%)']:.2f}% Volatility = {values['Volatility (%)']:.2f}%")
+            else:
+                print(f"{metric}: Return = N/A Volatility = N/A")
         else:
-            print(f"{metric}: {values if isinstance(values, str) else f'{values:.2f}%'}")
+            # Properly handle date printing and percentage
+            if isinstance(values, pd.Timestamp):
+                print(f"{metric}: {values.strftime('%Y-%m-%d')}")
+            else:
+                print(f"{metric}: {values:.2f}%")
