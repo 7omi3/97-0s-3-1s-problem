@@ -1,0 +1,120 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the Excel file
+file_path = 'perfanal.xlsx'
+sheet_name = 'Raw'
+
+# Read the data from the "Raw" tab
+df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+# Convert the date column to datetime
+df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], dayfirst=True)
+
+# Function to calculate annualized return
+def calculate_annualized_return(data, periods_per_year=12):
+    compounded_growth = (1 + data).prod()
+    n_periods = len(data)
+    annualized_return = compounded_growth ** (periods_per_year / n_periods) - 1
+    return annualized_return * 100  # Convert to percentage
+
+# Function to calculate annualized volatility
+def calculate_annualized_volatility(data, periods_per_year=12):
+    volatility = data.std() * np.sqrt(periods_per_year)
+    return volatility * 100  # Convert to percentage
+
+# Function to calculate maximum drawdown with dates
+def calculate_max_drawdown(data, dates):
+    cumulative = (1 + data).cumprod()
+    peak = cumulative.cummax()
+    drawdown = (cumulative - peak) / peak
+
+    # Calculate max drawdown
+    max_drawdown = drawdown.min()
+
+    # Find the peak date, trough date, and recovery date
+    trough_index = drawdown.idxmin()  # Index of the max drawdown
+    peak_index = cumulative[:trough_index].idxmax()  # Index of the peak before the trough
+    recovery_index = (cumulative[trough_index:] >= peak[peak_index]).idxmax()  # Index of recovery
+
+    peak_date = dates[peak_index]
+    trough_date = dates[trough_index]
+    recovery_date = dates[recovery_index] if recovery_index > trough_index else None  # Check if recovery actually happened
+
+    return max_drawdown * 100, peak_date, trough_date, recovery_date  # Convert to percentage
+
+# Initialize dictionary to store results
+results = {}
+
+# Define periods for analysis in years
+periods = {
+    '1 year': 12,
+    '3 year': 36,
+    '5 year': 60,
+    '10 year': 120,
+    '15 year': 180
+}
+
+# Calculate returns, volatility, max drawdown for each portfolio
+for portfolio in df.columns[1:]:
+    portfolio_data = df[[df.columns[0], portfolio]].dropna()  # Include dates for filtering
+    dates = portfolio_data.iloc[:, 0]
+    returns = portfolio_data[portfolio]
+    results[portfolio] = {}
+    
+    # Annual performance and volatility by year
+    for year in range(2019, 2025):
+        year_data = portfolio_data[portfolio_data.iloc[:, 0].dt.year == year][portfolio]
+        if not year_data.empty:
+            annual_return = calculate_annualized_return(year_data, periods_per_year=len(year_data))
+            annual_volatility = calculate_annualized_volatility(year_data, periods_per_year=len(year_data))
+            results[portfolio][f'{year}'] = {
+                'Return (%)': annual_return,
+                'Volatility (%)': annual_volatility
+            }
+        else:
+            results[portfolio][f'{year}'] = {
+                'Return (%)': None,
+                'Volatility (%)': None
+            }
+    
+    # Long-term performance and volatility
+    for period_name, period_months in periods.items():
+        if len(portfolio_data) >= period_months:
+            period_data = portfolio_data[portfolio].iloc[-period_months:]  # Get the data for the required period
+            annualized_return = calculate_annualized_return(period_data)
+            annualized_volatility = calculate_annualized_volatility(period_data)
+            results[portfolio][period_name] = {
+                'Return (%)': annualized_return,
+                'Volatility (%)': annualized_volatility
+            }
+        else:
+            results[portfolio][period_name] = {
+                'Return (%)': None,
+                'Volatility (%)': None
+            }
+
+    # Calculate max drawdown for the entire period
+    max_drawdown, peak_date, trough_date, recovery_date = calculate_max_drawdown(returns, dates)
+    results[portfolio]['Max Drawdown (%)'] = max_drawdown
+    results[portfolio]['Peak Date'] = peak_date
+    results[portfolio]['Trough Date'] = trough_date
+    results[portfolio]['Recovery Date'] = recovery_date
+
+    # Plot histogram of returns
+    plt.figure()
+    plt.hist(returns, bins=30, edgecolor='black')
+    plt.title(f'Returns Distribution for {portfolio}')
+    plt.xlabel('Returns')
+    plt.ylabel('Frequency')
+    plt.show()
+
+# Print results
+for portfolio, metrics in results.items():
+    print(f"\nPortfolio: {portfolio}")
+    for metric, values in metrics.items():
+        if isinstance(values, dict):
+            print(f"{metric}: Return = {values['Return (%)']:.2f}% Volatility = {values['Volatility (%)']:.2f}%")
+        else:
+            print(f"{metric}: {values if isinstance(values, str) else f'{values:.2f}%'}")
