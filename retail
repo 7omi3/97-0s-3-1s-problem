@@ -1,43 +1,48 @@
 import pandas as pd
 
-# List of sheets to read
-sheet_names = ["UTLP65", "UTLP60", "UTLP55", "UTLP50", "UTLP45", "UTLP40", "UTLP35", "UTLP30", "UTLPRET"]
-
-# List of CUSIPs in the desired order
-desired_cusips = [
-    "BRW9GEFT9", "BRWU07BP6", "BRWX9VF25", "SBJFVF832", "BRTYX23T8", 
-    "BRTQLBL92", "BRWX9Y4G0", "BRWX9WDZ2", "BRSHXH3E6", "BRWX9U858", 
-    "BRSEM7J75", "BRSEM7H93", "BRSDVN4P8", "BRYGA7Q11", "BRYGC1JX0", 
+# Define the CUSIP order
+cusip_order = [
+    "BRW9GEFT9", "BRWU07BP6", "BRWX9VF25", "SBJFVF832", "BRTYX23T8",
+    "BRTQLBL92", "BRWX9Y4G0", "BRWX9WDZ2", "BRSHXH3E6", "BRWX9U858",
+    "BRSEM7J75", "BRSEM7H93", "BRSDVN4P8", "BRYGA7Q11", "BRYGC1JX0",
     "BRWL6SDX5", "SBF553834", "BRTKWG434", "BRSEM7HS1"
 ]
 
-# Dictionary to store the result data
-result_data = {cusip: [] for cusip in desired_cusips}
+# Initialize an empty DataFrame for the final result
+final_df = pd.DataFrame()
 
-# Read each sheet, process it, and store the pct_mv values
-for sheet in sheet_names:
-    try:
-        # Read the sheet into a DataFrame
-        df = pd.read_csv("out.csv", sheet_name=sheet)
+# Load the Excel file
+excel_file = pd.ExcelFile("ucitoutput.xlsx")
 
-        # Create a dictionary of 'cusip' to 'pct_mv'
-        cusip_to_pct_mv = dict(zip(df['cusip'], df['pct_mv']))
-
-        # Fill in the result_data with pct_mv values or 0 if the cusip is missing
-        for cusip in desired_cusips:
-            result_data[cusip].append(cusip_to_pct_mv.get(cusip, 0))
+# Process each sheet
+for sheet_name in excel_file.sheet_names:
+    # Read the sheet into a DataFrame
+    df = pd.read_excel(excel_file, sheet_name=sheet_name)
     
-    except Exception as e:
-        print(f"Error reading sheet {sheet}: {e}")
+    # Ensure 'cusip' is a string to avoid any numeric issues
+    df['cusip'] = df['cusip'].astype(str)
+    
+    # Create a DataFrame with all cusips in the order with 'pct_mv' default to 0
+    ordered_df = pd.DataFrame(cusip_order, columns=['cusip'])
+    ordered_df['pct_mv'] = 0
+    
+    # Merge the original data into the ordered DataFrame
+    ordered_df = pd.merge(ordered_df, df[['cusip', 'pct_mv']], on='cusip', how='left', suffixes=('', '_orig'))
+    
+    # Fill NaN values in 'pct_mv' from the original data with 0
+    ordered_df['pct_mv'] = ordered_df['pct_mv_orig'].fillna(0)
+    
+    # Drop the '_orig' column used for merging
+    ordered_df.drop(columns=['pct_mv_orig'], inplace=True)
+    
+    # Set the 'cusip' as the index
+    ordered_df.set_index('cusip', inplace=True)
+    
+    # Add the 'pct_mv' column to the final DataFrame
+    final_df[sheet_name] = ordered_df['pct_mv']
 
-# Convert the result data into a DataFrame
-final_df = pd.DataFrame(result_data)
+# Reset the index for the final DataFrame
+final_df.reset_index(drop=True, inplace=True)
 
-# Transpose the DataFrame to have CUSIPs as rows and sheet names as columns
-final_df = final_df.T
-final_df.columns = sheet_names
-
-# Save the result DataFrame to a new CSV file
-final_df.to_csv("processed_output.csv", index_label='CUSIP')
-
-print("Processing complete. The new CSV file 'processed_output.csv' has been created.")
+# Save the final DataFrame to a CSV file
+final_df.to_csv('output.csv', index=False)
