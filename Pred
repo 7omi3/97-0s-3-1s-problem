@@ -5,11 +5,15 @@ from dateutil.relativedelta import relativedelta
 import re
 
 def extract_date(s):
-    match = re.search(r'Monthly Return (\d{4}-\d{2}) Base currency', str(s))
-    if match:
-        date_str = match.group(1) + '-01'  # Assuming first day of the month
-        return pd.to_datetime(date_str)
-    else:
+    s = str(s)
+    # Remove known prefixes and suffixes
+    s = s.replace('Monthly Return', '').replace('Base currency', '').strip()
+    # Remove any extra spaces and hyphens
+    s = s.replace(' ', '').replace('-', '')
+    # Now s should be in 'yyyymm' format
+    try:
+        return pd.to_datetime(s + '01', format='%Y%m%d')
+    except ValueError:
         return None
 
 def compute_cumulative_return(data, start_date, end_date):
@@ -54,6 +58,10 @@ df = pd.read_excel('input.xlsx', sheet_name='Sheet2', header=None)
 fund_names = df.iloc[0, 1:].values
 # Extract and parse dates
 dates = df.iloc[1:, 0].apply(extract_date)
+print("Extracted dates:")
+print(dates.head())
+print("Number of valid dates:", dates.notna().sum())
+
 # Prepare data
 data = df.iloc[1:, 1:]
 data.columns = fund_names
@@ -65,9 +73,15 @@ data = data / 100.0  # Convert percentages to decimals
 data = data[~data.index.isna()]
 data = data.sort_index()
 
+# Ensure that data.index is a DatetimeIndex
+data.index = pd.to_datetime(data.index)
+
 # Define end date and start dates for periods
 end_date = data.index.max()
 start_date = data.index.min()
+
+print("Data index dtype:", data.index.dtype)
+print("End date:", end_date, "Type:", type(end_date))
 
 start_date_3m = max(end_date - relativedelta(months=3), start_date)
 start_date_6m = max(end_date - relativedelta(months=6), start_date)
