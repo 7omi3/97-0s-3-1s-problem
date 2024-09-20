@@ -1,0 +1,53 @@
+import pandas as pd
+import numpy as np
+
+def calculate_returns_volatility_drawdown(data):
+    """Calculates returns, volatility, and maximum drawdown from the given data.
+
+    Args:
+        data: A pandas DataFrame containing the fund data.
+
+    Returns:
+        A tuple containing the calculated returns, volatility, and maximum drawdown.
+    """
+
+    # Calculate returns
+    returns = (data.shift(-1) / data) - 1
+
+    # Calculate volatility
+    volatility = returns.std() * np.sqrt(12)  # Annualized volatility
+
+    # Calculate maximum drawdown
+    cumulative_returns = (1 + returns).cumprod()
+    max_drawdown = (cumulative_returns / cumulative_returns.cummax() - 1).min()
+    peak_date = cumulative_returns.idxmax()
+    trough_date = cumulative_returns.idxmin()
+    recovery_date = cumulative_returns[trough_date:].idxmax()
+
+    return returns, volatility, max_drawdown, peak_date, trough_date, recovery_date
+
+def main():
+    # Read the Excel file
+    file_path = "your_file.xlsx"  # Replace with the actual file path
+    df = pd.read_excel(file_path, sheet_name="Sheet2", header=None)
+
+    # Clean the data
+    df.dropna(inplace=True)  # Remove rows with missing values
+    df.columns = df.iloc[0]  # Set the first row as the column names
+    df = df.drop(df.index[0])  # Remove the first row (now the column names)
+    df.index = pd.to_datetime(df.index, format="%Y-%m")  # Convert index to datetime
+
+    # Calculate returns, volatility, and drawdown for each fund
+    results = []
+    for fund in df.columns:
+        fund_data = df[fund]
+        returns, volatility, max_drawdown, peak_date, trough_date, recovery_date = calculate_returns_volatility_drawdown(fund_data)
+        results.append([fund, returns, volatility, max_drawdown, peak_date, trough_date, recovery_date])
+
+    # Create a new Excel file
+    new_file_path = "results.xlsx"
+    new_df = pd.DataFrame(results, columns=["Fund", "Returns", "Volatility", "Max Drawdown", "Peak Date", "Trough Date", "Recovery Date"])
+    new_df.to_excel(new_file_path, index=False)
+
+if __name__ == "__main__":
+    main()
