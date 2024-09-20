@@ -41,7 +41,10 @@ df.columns = df.columns.str.strip()
 first_col_name = df.columns[0]
 
 # Convert the first column to dates if it matches the expected pattern
-df['Date'] = pd.to_datetime(df[first_col_name].str.extract(r'(\d{4}-\d{2})')[0], format='%Y-%m')
+df['Date'] = pd.to_datetime(df[first_col_name].str.extract(r'(\d{4}-\d{2})')[0], format='%Y-%m', errors='coerce')
+
+# Remove rows where the 'Date' is NaT (invalid date)
+df = df.dropna(subset=['Date'])
 
 # Set 'Date' as the index
 df.set_index('Date', inplace=True)
