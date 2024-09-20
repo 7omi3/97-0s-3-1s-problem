@@ -1,53 +1,77 @@
 import pandas as pd
 import numpy as np
+from openpyxl import Workbook
+from datetime import datetime
 
-def calculate_returns_volatility_drawdown(data):
-    """Calculates returns, volatility, and maximum drawdown from the given data.
-
-    Args:
-        data: A pandas DataFrame containing the fund data.
-
-    Returns:
-        A tuple containing the calculated returns, volatility, and maximum drawdown.
-    """
-
-    # Calculate returns
-    returns = (data.shift(-1) / data) - 1
-
-    # Calculate volatility
-    volatility = returns.std() * np.sqrt(12)  # Annualized volatility
-
-    # Calculate maximum drawdown
-    cumulative_returns = (1 + returns).cumprod()
-    max_drawdown = (cumulative_returns / cumulative_returns.cummax() - 1).min()
-    peak_date = cumulative_returns.idxmax()
-    trough_date = cumulative_returns.idxmin()
-    recovery_date = cumulative_returns[trough_date:].idxmax()
-
-    return returns, volatility, max_drawdown, peak_date, trough_date, recovery_date
-
-def main():
+def read_excel_file(file_path):
     # Read the Excel file
-    file_path = "your_file.xlsx"  # Replace with the actual file path
-    df = pd.read_excel(file_path, sheet_name="Sheet2", header=None)
+    df = pd.read_excel(file_path, sheet_name='Sheet2', header=1)
+    
+    # Convert date strings to datetime objects
+    df['Date'] = df.iloc[:, 0].apply(lambda x: datetime.strptime(x.split()[-2], '%Y-%m'))
+    
+    # Set 'Date' as index and drop the original date column
+    df = df.set_index('Date').drop(df.columns[0], axis=1)
+    
+    return df
 
-    # Clean the data
-    df.dropna(inplace=True)  # Remove rows with missing values
-    df.columns = df.iloc[0]  # Set the first row as the column names
-    df = df.drop(df.index[0])  # Remove the first row (now the column names)
-    df.index = pd.to_datetime(df.index, format="%Y-%m")  # Convert index to datetime
+def calculate_return(series):
+    return series.pct_change().iloc[-3:].mean()
 
-    # Calculate returns, volatility, and drawdown for each fund
+def calculate_volatility(series):
+    return series.pct_change().iloc[-3:].std() * np.sqrt(12)
+
+def calculate_drawdown(series):
+    cumulative_returns = (1 + series.pct_change()).cumprod()
+    running_max = cumulative_returns.cummax()
+    drawdown = (cumulative_returns - running_max) / running_max
+    
+    max_drawdown = drawdown.min()
+    peak_date = running_max[drawdown == max_drawdown].index[0]
+    trough_date = drawdown[drawdown == max_drawdown].index[0]
+    
+    try:
+        recovery_date = drawdown[drawdown.index > trough_date][drawdown >= 0].index[0]
+    except IndexError:
+        recovery_date = "Not recovered"
+    
+    return max_drawdown, peak_date, trough_date, recovery_date
+
+def process_file(input_file, output_file):
+    df = read_excel_file(input_file)
+    
     results = []
+    
     for fund in df.columns:
-        fund_data = df[fund]
-        returns, volatility, max_drawdown, peak_date, trough_date, recovery_date = calculate_returns_volatility_drawdown(fund_data)
-        results.append([fund, returns, volatility, max_drawdown, peak_date, trough_date, recovery_date])
-
+        returns = calculate_return(df[fund])
+        volatility = calculate_volatility(df[fund])
+        max_drawdown, peak_date, trough_date, recovery_date = calculate_drawdown(df[fund])
+        
+        results.append({
+            'Fund': fund,
+            'Return': returns,
+            'Volatility': volatility,
+            'Max Drawdown': max_drawdown,
+            'Peak Date': peak_date,
+            'Trough Date': trough_date,
+            'Recovery Date': recovery_date
+        })
+    
+    results_df = pd.DataFrame(results)
+    
     # Create a new Excel file
-    new_file_path = "results.xlsx"
-    new_df = pd.DataFrame(results, columns=["Fund", "Returns", "Volatility", "Max Drawdown", "Peak Date", "Trough Date", "Recovery Date"])
-    new_df.to_excel(new_file_path, index=False)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Fund Analysis"
+    
+    # Write the DataFrame to the Excel file
+    for r in pd.DataFrame(results_df).itertuples():
+        ws.append(r[1:])
+    
+    # Save the file
+    wb.save(output_file)
 
-if __name__ == "__main__":
-    main()
+# Usage
+input_file = 'path/to/your/input_file.xlsx'
+output_file = 'path/to/your/output_file.xlsx'
+process_file(input_file, output_file)
