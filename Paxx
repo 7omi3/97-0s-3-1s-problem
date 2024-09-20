@@ -1,0 +1,208 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the Excel file
+file_path = 'perfanal.xlsx'
+sheet_name = 'Raw'
+
+# Read the data from the "Raw" tab
+df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+# Convert the date column to datetime
+df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], dayfirst=True)
+
+# Function to calculate annualized return
+def calculate_annualized_return(data, periods_per_year=12):
+    compounded_growth = (1 + data).prod()
+    n_periods = len(data)
+    annualized_return = compounded_growth ** (periods_per_year / n_periods) - 1
+    return annualized_return * 100  # Convert to percentage
+
+# Function to calculate annualized volatility
+def calculate_annualized_volatility(data, periods_per_year=12):
+    volatility = data.std() * np.sqrt(periods_per_year)
+    return volatility * 100  # Convert to percentage
+
+# Function to calculate maximum drawdown with dates and recovery status
+def calculate_max_drawdown(data, dates):
+    cumulative = (1 + data).cumprod()
+    peak = cumulative.cummax()
+    drawdown = (cumulative - peak) / peak
+
+    # Calculate max drawdown
+    max_drawdown = drawdown.min()
+
+    # Find the peak date, trough date, and recovery date
+    trough_index = drawdown.idxmin()  # Index of the max drawdown
+    peak_index = cumulative[:trough_index].idxmax()  # Index of the peak before the trough
+    # Find the recovery index, if recovery occurs, otherwise indicate no recovery
+    recovery_indices = np.where(cumulative[trough_index:] >= peak[peak_index])[0]
+    if recovery_indices.size > 0:
+        recovery_index = recovery_indices[0] + trough_index
+        recovery_date = dates[recovery_index]
+    else:
+        recovery_date = "Has not recovered"
+
+    peak_date = dates[peak_index]
+    trough_date = dates[trough_index]
+
+    return max_drawdown * 100, peak_date, trough_date, recovery_date  # Convert to percentage
+
+# Function to calculate Value at Risk (VaR)
+def calculate_var(data, confidence_level=0.05):
+    return np.percentile(data, 100 * confidence_level) * 100  # Convert to percentage
+
+# Function to calculate Conditional Value at Risk (CVaR)
+def calculate_cvar(data, confidence_level=0.05):
+    var_threshold = np.percentile(data, 100 * confidence_level)
+    return data[data <= var_threshold].mean() * 100  # Convert to percentage
+
+# Function to calculate Sharpe Ratio
+def calculate_sharpe_ratio(data, risk_free_rate=0.02, periods_per_year=12):
+    excess_return = data.mean() - (risk_free_rate / periods_per_year)
+    volatility = data.std()
+    sharpe_ratio = (excess_return / volatility) * np.sqrt(periods_per_year)
+    return sharpe_ratio
+
+# Initialize dictionary to store results
+results = {}
+
+# Define periods for analysis in years
+periods = {
+    '1 year': 12,
+    '3 year': 36,
+    '5 year': 60,
+    '10 year': 120,
+    '15 year': 180
+}
+
+# Calculate returns, volatility, max drawdown, VaR, CVaR, Sharpe Ratio for each portfolio
+for portfolio in df.columns[1:]:
+    portfolio_data = df[[df.columns[0], portfolio]].dropna()  # Include dates for filtering
+    dates = portfolio_data.iloc[:, 0]
+    returns = portfolio_data[portfolio]
+    results[portfolio] = {}
+
+    # Annual performance, volatility, VaR, CVaR, Sharpe Ratio by year
+    for year in range(2019, 2025):
+        year_data = portfolio_data[portfolio_data.iloc[:, 0].dt.year == year][portfolio]
+        if not year_data.empty:
+            annual_return = calculate_annualized_return(year_data, periods_per_year=len(year_data))
+            annual_volatility = calculate_annualized_volatility(year_data, periods_per_year=len(year_data))
+            var = calculate_var(year_data)
+            cvar = calculate_cvar(year_data)
+            sharpe_ratio = calculate_sharpe_ratio(year_data)
+            results[portfolio][f'{year}'] = {
+                'Return (%)': annual_return,
+                'Volatility (%)': annual_volatility,
+                'VaR (%)': var,
+                'CVaR (%)': cvar,
+                'Sharpe Ratio': sharpe_ratio
+            }
+        else:
+            results[portfolio][f'{year}'] = {
+                'Return (%)': None,
+                'Volatility (%)': None,
+                'VaR (%)': None,
+                'CVaR (%)': None,
+                'Sharpe Ratio': None
+            }
+
+    # Long-term performance, volatility, VaR, CVaR, Sharpe Ratio
+    for period_name, period_months in periods.items():
+        if len(portfolio_data) >= period_months:
+            period_data = portfolio_data[portfolio].iloc[-period_months:]  # Get the data for the required period
+            annualized_return = calculate_annualized_return(period_data)
+            annualized_volatility = calculate_annualized_volatility(period_data)
+            var = calculate_var(period_data)
+            cvar = calculate_cvar(period_data)
+            sharpe_ratio = calculate_sharpe_ratio(period_data)
+            results[portfolio][period_name] = {
+                'Return (%)': annualized_return,
+                'Volatility (%)': annualized_volatility,
+                'VaR (%)': var,
+                'CVaR (%)': cvar,
+                'Sharpe Ratio': sharpe_ratio
+            }
+        else:
+            results[portfolio][period_name] = {
+                'Return (%)': None,
+                'Volatility (%)': None,
+                'VaR (%)': None,
+                'CVaR (%)': None,
+                'Sharpe Ratio': None
+            }
+
+    # Calculate metrics for the last quarter
+    last_date = dates.max()
+    last_quarter = f"Q{((last_date.month - 1) // 3) + 1} {last_date.year}"
+    quarter_mask = (dates.dt.year == last_date.year) & (dates.dt.quarter == last_date.quarter)
+    quarter_data = returns[quarter_mask]
+
+    if not quarter_data.empty:
+        quarterly_return = calculate_annualized_return(quarter_data, periods_per_year=len(quarter_data))
+        quarterly_volatility = calculate_annualized_volatility(quarter_data, periods_per_year=len(quarter_data))
+        var = calculate_var(quarter_data)
+        cvar = calculate_cvar(quarter_data)
+        sharpe_ratio = calculate_sharpe_ratio(quarter_data)
+        results[portfolio][last_quarter] = {
+            'Return (%)': quarterly_return,
+            'Volatility (%)': quarterly_volatility,
+            'VaR (%)': var,
+            'CVaR (%)': cvar,
+            'Sharpe Ratio': sharpe_ratio
+        }
+    else:
+        results[portfolio][last_quarter] = {
+            'Return (%)': None,
+            'Volatility (%)': None,
+            'VaR (%)': None,
+            'CVaR (%)': None,
+            'Sharpe Ratio': None
+        }
+
+    # Calculate max drawdown for the entire period
+    max_drawdown, peak_date, trough_date, recovery_date = calculate_max_drawdown(returns, dates)
+    results[portfolio]['Max Drawdown (%)'] = max_drawdown
+    results[portfolio]['Peak Date'] = peak_date
+    results[portfolio]['Trough Date'] = trough_date
+    results[portfolio]['Recovery Date'] = recovery_date
+
+    # Plot histogram of returns
+    plt.figure()
+    plt.hist(returns, bins=30, edgecolor='black')
+    plt.title(f'Returns Distribution for {portfolio}')
+    plt.xlabel('Returns')
+    plt.ylabel('Frequency')
+    plt.show()
+
+# Print results
+for portfolio, metrics in results.items():
+    print(f"\nPortfolio: {portfolio}")
+    for metric, values in metrics.items():
+        if isinstance(values, dict):
+            if all(v is not None for v in values.values()):
+                print(f"{metric}: Return = {values['Return (%)']:.2f}%, Volatility = {values['Volatility (%)']:.2f}%, "
+                      f"VaR = {values['VaR (%)']:.2f}%, CVaR = {values['CVaR (%)']:.2f}%, Sharpe Ratio = {values['Sharpe Ratio']:.2f}")
+            else:
+                print(f"{metric}: Return = N/A, Volatility = N/A, VaR = N/A, CVaR = N/A, Sharpe Ratio = N/A")
+        else:
+            if isinstance(values, pd.Timestamp):
+                print(f"{metric}: {values.strftime('%Y-%m-%d')}")
+            elif values == "Has not recovered":
+                print(f"{metric}: {values}")
+            else:
+                print(f"{metric}: {values:.2f}%")
+
+# Create an Excel file to save the results
+with pd.ExcelWriter('portfolio_performance_analysis.xlsx') as writer:
+    for portfolio, metrics in results.items():
+        # Convert the nested dictionary to a DataFrame
+        df_results = pd.DataFrame(metrics).T
+        # Convert any Timestamp to string for Excel output
+        for col in ['Peak Date', 'Trough Date', 'Recovery Date']:
+            if col in df_results.columns:
+                df_results[col] = df_results[col].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and isinstance(x, pd.Timestamp) else x)
+        # Save DataFrame to the Excel file, each portfolio in a separate sheet
+        df_results.to_excel(writer, sheet_name=portfolio)
