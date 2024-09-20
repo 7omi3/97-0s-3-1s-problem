@@ -1,85 +1,81 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import openpyxl
+import scipy.stats as stats
 
-# Function to convert date format
-def convert_date_format(date_str):
-    try:
-        # Extract the year and month from the string
-        date_part = date_str.split(' ')[2]  # 'yyyy-mm'
-        return pd.to_datetime(date_part, format='%Y-%m')
-    except:
-        return None
+# Function to calculate annualized returns
+def annualized_return(returns, periods_per_year):
+    compounded_growth = (1 + returns).prod()
+    n_periods = len(returns)
+    return compounded_growth**(periods_per_year / n_periods) - 1
 
-# Function to calculate rolling volatility
-def rolling_volatility(returns, window):
-    return returns.rolling(window).std() * np.sqrt(12)  # Annualized volatility
+# Function to calculate volatility (standard deviation) annualized
+def annualized_volatility(returns, periods_per_year):
+    return returns.std() * np.sqrt(periods_per_year)
 
-# Function to calculate maximum drawdown and dates
+# Function to calculate max drawdown
 def max_drawdown(returns):
     cumulative = (1 + returns).cumprod()
-    running_max = cumulative.cummax()
-    drawdown = (cumulative - running_max) / running_max
+    peak = cumulative.cummax()
+    drawdown = (cumulative - peak) / peak
     max_dd = drawdown.min()
 
-    trough_date = drawdown.idxmin()
-    peak_date = cumulative[:trough_date].idxmax()
+    trough = drawdown.idxmin()
+    peak_date = cumulative[:trough].idxmax()
 
-    # Recovery date: when cumulative returns exceed the previous peak
-    recovery_date = cumulative[trough_date:].loc[cumulative[trough_date:] >= running_max[peak_date]].first_valid_index()
+    # Check for recovery
+    recovery = np.nan
+    if cumulative[trough:].max() >= cumulative[peak_date]:
+        recovery = cumulative[trough:].idxmax()
     
-    return max_dd, peak_date, trough_date, recovery_date
+    return max_dd, peak_date, trough, recovery
 
-# Read Excel file
-file_path = 'your_file_path_here.xlsx'
-df = pd.read_excel(file_path, sheet_name='Sheet2')
+# Reading the Excel file
+file_path = "your_file.xlsx"  # Specify the file path
+df = pd.read_excel(file_path, sheet_name="Sheet2", header=1)
 
-# Clean up the dates in column A
-df['Date'] = df.iloc[:, 0].apply(convert_date_format)
+# Convert 'A2', 'A3'... (Monthly Return yyyy-mm Base currency) to dates
+df['Date'] = pd.to_datetime(df['Unnamed: 0'].str.extract(r'(\d{4}-\d{2})')[0], format='%Y-%m')
 
-# Set the Date as the index and drop the original Date column
+# Set 'Date' as the index
 df.set_index('Date', inplace=True)
-df = df.drop(df.columns[0], axis=1)  # Drop the first column, which had date strings
 
-# Calculate metrics for each fund
-results = {}
+# Remove any non-numeric rows (e.g., headers or footnotes)
+df = df.dropna(how='all', axis=0)
+
+# Calculate performance metrics
+output = pd.DataFrame()
+
+periods = {
+    '3 months': 3,
+    '6 months': 6,
+    'YTD': df.index.year.unique()[-1],  # Year to Date
+    '3 years': 36,  # Assuming 12 periods in a year (monthly data)
+    '5 years': 60
+}
+
 for fund in df.columns:
-    fund_data = df[fund].dropna()  # Drop any missing data for the fund
+    fund_data = {}
+    # Get the most recent data and trim for required periods
+    recent_data = df[fund].tail(periods['3 years'])
     
-    # Calculate rolling returns
-    last_3_months = fund_data[-3:].mean()
-    last_6_months = fund_data[-6:].mean()
-    ytd_return = fund_data[fund_data.index.year == datetime.now().year].mean()
-    
-    # Calculate annualized returns (assuming monthly returns are provided)
-    three_year_annualized = (1 + fund_data[-36:].mean())**12 - 1
-    five_year_annualized = (1 + fund_data[-60:].mean())**12 - 1
-    
-    # Calculate volatilities
-    vol_3_month = rolling_volatility(fund_data, 3).iloc[-1]
-    vol_6_month = rolling_volatility(fund_data, 6).iloc[-1]
+    # Calculate returns and volatility for different periods
+    for period, months in periods.items():
+        period_data = df[fund].tail(months) if isinstance(months, int) else df[df.index.year == months][fund]
+        fund_data[f"{period} return"] = (1 + period_data).prod() - 1
+        fund_data[f"{period} volatility"] = annualized_volatility(period_data, 12) * 100
     
     # Calculate max drawdown
-    max_dd, peak_date, trough_date, recovery_date = max_drawdown(fund_data)
+    max_dd, peak, trough, recovery = max_drawdown(recent_data)
+    fund_data['Max Drawdown'] = max_dd * 100
+    fund_data['Peak Date'] = peak.strftime('%Y-%m')
+    fund_data['Trough Date'] = trough.strftime('%Y-%m')
+    fund_data['Recovery Date'] = recovery.strftime('%Y-%m') if not pd.isna(recovery) else 'Not recovered'
 
-    # Store results
-    results[fund] = {
-        '3 Month Return': last_3_months,
-        '6 Month Return': last_6_months,
-        'YTD Return': ytd_return,
-        '3 Year Annualized Return': three_year_annualized,
-        '5 Year Annualized Return': five_year_annualized,
-        '3 Month Volatility': vol_3_month,
-        '6 Month Volatility': vol_6_month,
-        'Max Drawdown': max_dd,
-        'Peak Date': peak_date,
-        'Trough Date': trough_date,
-        'Recovery Date': recovery_date
-    }
-
-# Convert results to a DataFrame for easier saving
-results_df = pd.DataFrame(results).T
+    # Append the fund data
+    output[fund] = pd.Series(fund_data)
 
 # Write to a new Excel file
-results_df.to_excel('funds_analysis.xlsx')
+output.to_excel("fund_performance_analysis.xlsx", index_label="Metrics")
+
+print("Fund performance metrics saved successfully!")
