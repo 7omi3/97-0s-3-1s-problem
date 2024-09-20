@@ -34,11 +34,20 @@ def max_drawdown(returns):
 file_path = "your_file.xlsx"  # Specify the file path
 df = pd.read_excel(file_path, sheet_name="Sheet2", header=1)
 
-# Convert 'A2', 'A3'... (Monthly Return yyyy-mm Base currency) to dates
-df['Date'] = pd.to_datetime(df['Unnamed: 0'].str.extract(r'(\d{4}-\d{2})')[0], format='%Y-%m')
+# Clean column names in case there's extra whitespace or issues
+df.columns = df.columns.str.strip()
+
+# Check the name of the first column (likely unnamed, but it may vary)
+first_col_name = df.columns[0]
+
+# Convert the first column to dates if it matches the expected pattern
+df['Date'] = pd.to_datetime(df[first_col_name].str.extract(r'(\d{4}-\d{2})')[0], format='%Y-%m')
 
 # Set 'Date' as the index
 df.set_index('Date', inplace=True)
+
+# Remove the first column as it's no longer needed (date column extracted)
+df = df.drop(columns=[first_col_name])
 
 # Remove any non-numeric rows (e.g., headers or footnotes)
 df = df.dropna(how='all', axis=0)
