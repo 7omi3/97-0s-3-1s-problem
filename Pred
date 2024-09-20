@@ -40,10 +40,15 @@ df.columns = df.columns.str.strip()
 # Check the name of the first column (likely unnamed, but it may vary)
 first_col_name = df.columns[0]
 
-# Convert the first column to dates if it matches the expected pattern
+# Ensure the first column contains valid date-like strings before conversion
+# Filter rows that contain valid date-like strings "Monthly Return yyyy-mm"
+valid_date_rows = df[first_col_name].str.contains(r'Monthly Return \d{4}-\d{2}', na=False)
+df = df[valid_date_rows]
+
+# Extract the 'yyyy-mm' and convert to datetime
 df['Date'] = pd.to_datetime(df[first_col_name].str.extract(r'(\d{4}-\d{2})')[0], format='%Y-%m', errors='coerce')
 
-# Remove rows where the 'Date' is NaT (invalid date)
+# Drop rows where date conversion failed (NaT)
 df = df.dropna(subset=['Date'])
 
 # Set 'Date' as the index
@@ -73,9 +78,14 @@ for fund in df.columns:
     
     # Calculate returns and volatility for different periods
     for period, months in periods.items():
-        period_data = df[fund].tail(months) if isinstance(months, int) else df[df.index.year == months][fund]
-        fund_data[f"{period} return"] = (1 + period_data).prod() - 1
-        fund_data[f"{period} volatility"] = annualized_volatility(period_data, 12) * 100
+        if isinstance(months, int):
+            period_data = df[fund].tail(months)
+        else:
+            period_data = df[df.index.year == months][fund]
+
+        if len(period_data) > 0:  # Ensure there is data to process
+            fund_data[f"{period} return"] = (1 + period_data).prod() - 1
+            fund_data[f"{period} volatility"] = annualized_volatility(period_data, 12) * 100
     
     # Calculate max drawdown
     max_dd, peak, trough, recovery = max_drawdown(recent_data)
