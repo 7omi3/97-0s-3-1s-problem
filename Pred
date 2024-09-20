@@ -1,85 +1,144 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import re
 
-def parse_date(s):
-    # Parses the date from the string format "Monthly Return yyyy-mm Base currency"
-    try:
-        parts = s.split()
-        date_str = parts[2]
-        date = datetime.strptime(date_str, '%Y-%m')
-        return date
-    except Exception:
+def extract_date(s):
+    match = re.search(r'Monthly Return (\d{4}-\d{2}) Base currency', str(s))
+    if match:
+        date_str = match.group(1) + '-01'  # Assuming first day of the month
+        return pd.to_datetime(date_str)
+    else:
         return None
 
-def calculate_max_drawdown(cum_returns):
-    # Calculates the maximum drawdown and corresponding dates
-    cumulative_max = cum_returns.cummax()
-    drawdowns = cum_returns / cumulative_max - 1
+def compute_cumulative_return(data, start_date, end_date):
+    period_data = data.loc[start_date:end_date]
+    if period_data.empty:
+        return pd.Series(np.nan, index=data.columns)
+    cumulative_return = (1 + period_data).prod() - 1
+    return cumulative_return
+
+def compute_annualized_volatility(data, start_date, end_date):
+    period_data = data.loc[start_date:end_date]
+    if period_data.empty or len(period_data) < 2:
+        return pd.Series(np.nan, index=data.columns)
+    monthly_volatility = period_data.std()
+    annualized_volatility = monthly_volatility * np.sqrt(12)
+    return annualized_volatility
+
+def compute_annualized_return(data, start_date, end_date):
+    period_data = data.loc[start_date:end_date]
+    if period_data.empty or len(period_data) < 2:
+        return pd.Series(np.nan, index=data.columns)
+    cumulative_return = (1 + period_data).prod() - 1
+    num_years = (end_date - start_date).days / 365.25
+    if num_years <= 0:
+        return pd.Series(np.nan, index=data.columns)
+    annualized_return = (1 + cumulative_return) ** (1 / num_years) - 1
+    return annualized_return
+
+def compute_max_drawdown(cumulative_returns):
+    running_max = cumulative_returns.cummax()
+    drawdowns = (cumulative_returns - running_max) / running_max
     max_drawdown = drawdowns.min()
-    
     trough_date = drawdowns.idxmin()
-    peak_date = cum_returns.loc[:trough_date].idxmax()
-    
-    recovery_period = cum_returns.loc[trough_date:]
-    recovery_date = recovery_period[recovery_period >= cumulative_max[peak_date]].first_valid_index()
-    
-    if recovery_date is None:
-        recovery_date = 'Not yet recovered'
-    
+    peak_date = cumulative_returns.loc[:trough_date].idxmax()
+    recovery_date = cumulative_returns.loc[trough_date:][cumulative_returns >= cumulative_returns[peak_date]].first_valid_index()
     return max_drawdown, peak_date, trough_date, recovery_date
 
-def main():
-    # Read data from Sheet2
-    df = pd.read_excel('input_file.xlsx', sheet_name='Sheet2', header=None)
-    
-    # Process dates and set as index
-    date_strings = df.iloc[1:, 0]
-    dates = date_strings.apply(parse_date)
-    df_data = df.iloc[1:, 1:]
-    df_data.index = dates
-    fund_names = df.iloc[0, 1:]
-    df_data.columns = fund_names
-    
-    # Convert data to numeric and clean up
-    df_data = df_data.apply(pd.to_numeric, errors='coerce')
-    df_data = df_data[~df_data.index.isnull()]
-    df_data = df_data.sort_index()
-    
-    # Calculate return and volatility over the last 3 months
-    last_three_dates = df_data.index[-3:]
-    df_last3 = df_data.loc[last_three_dates] / 100.0
-    cumulative_return = (df_last3 + 1).prod() - 1
-    volatility = df_last3.std()
-    
-    # Calculate cumulative returns
-    df_returns = df_data / 100.0
-    df_cum_returns = (1 + df_returns).cumprod()
-    
-    # Calculate maximum drawdown
-    max_drawdowns = {}
-    for fund in df_cum_returns.columns:
-        cum_returns = df_cum_returns[fund].dropna()
-        if cum_returns.empty:
-            continue
-        max_dd, peak_date, trough_date, recovery_date = calculate_max_drawdown(cum_returns)
-        max_drawdowns[fund] = {
-            'Max Drawdown': max_dd,
-            'Peak Date': peak_date,
-            'Trough Date': trough_date,
-            'Recovery Date': recovery_date
-        }
-    
-    # Compile final results
-    results = pd.DataFrame({
-        'Return (Last 3 Months)': cumulative_return,
-        'Volatility (Last 3 Months)': volatility
-    })
-    df_max_drawdown = pd.DataFrame(max_drawdowns).T
-    final_results = results.join(df_max_drawdown)
-    
-    # Write results to a new Excel file
-    final_results.to_excel('output_file.xlsx')
+# Read Excel file and process data
+df = pd.read_excel('input.xlsx', sheet_name='Sheet2', header=None)
 
-if __name__ == "__main__":
-    main()
+# Extract fund names
+fund_names = df.iloc[0, 1:].values
+# Extract and parse dates
+dates = df.iloc[1:, 0].apply(extract_date)
+# Prepare data
+data = df.iloc[1:, 1:]
+data.columns = fund_names
+data.index = dates
+data = data.apply(pd.to_numeric, errors='coerce')
+data = data / 100.0  # Convert percentages to decimals
+
+# Remove rows with NaT in index (failed date parsing)
+data = data[~data.index.isna()]
+data = data.sort_index()
+
+# Define end date and start dates for periods
+end_date = data.index.max()
+start_date = data.index.min()
+
+start_date_3m = max(end_date - relativedelta(months=3), start_date)
+start_date_6m = max(end_date - relativedelta(months=6), start_date)
+start_date_ytd = max(pd.Timestamp(end_date.year, 1, 1), start_date)
+start_date_3y = max(end_date - relativedelta(years=3), start_date)
+start_date_5y = max(end_date - relativedelta(years=5), start_date)
+
+# Compute returns and volatilities
+cum_return_3m = compute_cumulative_return(data, start_date_3m, end_date)
+volatility_3m = compute_annualized_volatility(data, start_date_3m, end_date)
+
+cum_return_6m = compute_cumulative_return(data, start_date_6m, end_date)
+volatility_6m = compute_annualized_volatility(data, start_date_6m, end_date)
+
+cum_return_ytd = compute_cumulative_return(data, start_date_ytd, end_date)
+volatility_ytd = compute_annualized_volatility(data, start_date_ytd, end_date)
+
+annualized_return_3y = compute_annualized_return(data, start_date_3y, end_date)
+volatility_3y = compute_annualized_volatility(data, start_date_3y, end_date)
+
+annualized_return_5y = compute_annualized_return(data, start_date_5y, end_date)
+volatility_5y = compute_annualized_volatility(data, start_date_5y, end_date)
+
+# Compute maximum drawdown and dates
+cumulative_returns = (1 + data).cumprod()
+max_drawdown_info = {}
+
+for fund in data.columns:
+    cum_returns_fund = cumulative_returns[fund]
+    max_dd, peak_date, trough_date, recovery_date = compute_max_drawdown(cum_returns_fund)
+    max_drawdown_info[fund] = {
+        'Max Drawdown': max_dd,
+        'Peak Date': peak_date,
+        'Trough Date': trough_date,
+        'Recovery Date': recovery_date
+    }
+
+# Prepare output DataFrame
+output_df = pd.DataFrame(index=data.columns)
+
+output_df['Return 3M'] = cum_return_3m
+output_df['Volatility 3M'] = volatility_3m
+output_df['Return 6M'] = cum_return_6m
+output_df['Volatility 6M'] = volatility_6m
+output_df['Return YTD'] = cum_return_ytd
+output_df['Volatility YTD'] = volatility_ytd
+output_df['Annualized Return 3Y'] = annualized_return_3y
+output_df['Annualized Volatility 3Y'] = volatility_3y
+output_df['Annualized Return 5Y'] = annualized_return_5y
+output_df['Annualized Volatility 5Y'] = volatility_5y
+
+# Add maximum drawdown information
+max_drawdown = pd.Series({fund: info['Max Drawdown'] for fund, info in max_drawdown_info.items()})
+peak_dates = pd.Series({fund: info['Peak Date'] for fund, info in max_drawdown_info.items()})
+trough_dates = pd.Series({fund: info['Trough Date'] for fund, info in max_drawdown_info.items()})
+recovery_dates = pd.Series({fund: info['Recovery Date'] for fund, info in max_drawdown_info.items()})
+
+output_df['Max Drawdown'] = max_drawdown
+output_df['Peak Date'] = peak_dates
+output_df['Trough Date'] = trough_dates
+output_df['Recovery Date'] = recovery_dates
+
+# Format percentage columns
+percentage_cols = ['Return 3M', 'Volatility 3M', 'Return 6M', 'Volatility 6M',
+                   'Return YTD', 'Volatility YTD', 'Annualized Return 3Y',
+                   'Annualized Volatility 3Y', 'Annualized Return 5Y',
+                   'Annualized Volatility 5Y', 'Max Drawdown']
+
+output_df[percentage_cols] = output_df[percentage_cols] * 100
+
+# Write to Excel
+output_df.to_excel('output.xlsx')
+
+print("Analysis complete. Results are saved in 'output.xlsx'.")
