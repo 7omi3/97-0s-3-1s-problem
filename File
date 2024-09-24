@@ -4,35 +4,43 @@ def process_excel(input_file, output_file):
     # Load the Excel file
     xls = pd.ExcelFile(input_file)
     
-    # Dictionary to store grouped data
+    # Dictionary to store the grouped data
     grouped_data = {}
-    
-    # Iterate over each sheet
-    for sheet_name in xls.sheet_names:
-        # Split the sheet name into the first word and the rest
-        parts = sheet_name.split(' ', 1)
-        first_word = parts[0]
-        rest_of_name = parts[1] if len(parts) > 1 else ''
-        
-        # Read the content of the sheet
-        sheet_data = pd.read_excel(xls, sheet_name=sheet_name)
-        
-        # Add the rest_of_name as a new column
-        sheet_data['Group Name'] = rest_of_name
-        
-        # Append the data to the appropriate group in the dictionary
-        if first_word in grouped_data:
-            grouped_data[first_word] = pd.concat([grouped_data[first_word], sheet_data], ignore_index=True)
-        else:
-            grouped_data[first_word] = sheet_data
-    
-    # Write the grouped data into a new Excel file
-    with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
-        for first_word, data in grouped_data.items():
-            # Write each group to a separate sheet in the new Excel file
-            data.to_excel(writer, sheet_name=first_word, index=False)
 
-# Example usage:
-input_file = 'input_data.xlsx'  # Path to your input Excel file
-output_file = 'output_grouped_data.xlsx'  # Path where the output Excel file will be saved
+    # Iterate over the sheet names
+    for sheet_name in xls.sheet_names:
+        # Split the sheet name into prefix and the rest
+        parts = sheet_name.split('_', 1)
+        if len(parts) == 2:
+            prefix, rest_of_name = parts
+        else:
+            # If there is no underscore, skip this sheet
+            continue
+
+        # Read the sheet into a DataFrame
+        df = pd.read_excel(xls, sheet_name=sheet_name)
+        
+        # Add a new column with the rest of the name
+        df['Sheet_Info'] = rest_of_name
+        
+        # Group by the prefix
+        if prefix not in grouped_data:
+            grouped_data[prefix] = []
+        
+        grouped_data[prefix].append(df)
+
+    # Now create the output file
+    with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+        # Iterate over each group and write the data into the new Excel
+        for prefix, dfs in grouped_data.items():
+            # Concatenate all DataFrames for the current prefix
+            combined_df = pd.concat(dfs, ignore_index=True)
+            # Write the combined DataFrame to a new sheet
+            combined_df.to_excel(writer, sheet_name=prefix, index=False)
+
+    print(f"Data has been processed and saved to {output_file}")
+
+# Usage example
+input_file = 'your_input_file.xlsx'   # Replace with your input file path
+output_file = 'your_output_file.xlsx'  # Replace with your desired output file path
 process_excel(input_file, output_file)
