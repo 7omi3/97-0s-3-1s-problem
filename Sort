@@ -1,0 +1,63 @@
+# Define the grouping variables
+group_by_fund = 1  # Set this to 1 if grouping by fund, otherwise 0
+group_by_date = 0  # Set this to 1 if grouping by date, otherwise 0
+
+# List to store the DataFrames for each fund/date combination
+final_df_list = []
+
+# Loop over dates and funds to fetch data
+for date in dates:
+    for fund in funds:
+        current_payload = payload.copy()
+        current_payload.update({
+            "portfolioTicker": fund,
+            "reportingDate": date
+        })
+
+        # Get the response from the PortfolioAnalytics API
+        wrapper = PortfolioAnalytics()
+        response = wrapper.run_request(current_payload)
+
+        # Process the response
+        data = response.json()
+        df = unpack_response(data)
+        df = df[df.index == 0]  # Select only the aggregate numbers (first row)
+
+        # Add Fund and Date columns to the DataFrame
+        df['Fund'] = fund
+        df['Date'] = date
+
+        # Append the processed DataFrame to the list
+        final_df_list.append(df)
+
+# Concatenate all DataFrames into one final DataFrame
+final_df = pd.concat(final_df_list, ignore_index=True)
+
+# Write to Excel based on grouping criteria
+with pd.ExcelWriter('fund_data_grouped.xlsx') as writer:
+    if group_by_fund == 1 and group_by_date == 0:
+        # Group by fund: one sheet per fund, with date as a column
+        for fund in final_df['Fund'].unique():
+            df_fund = final_df[final_df['Fund'] == fund]
+            df_fund.to_excel(writer, sheet_name=f'Fund_{fund}', index=False)
+    
+    elif group_by_fund == 0 and group_by_date == 1:
+        # Group by date: one sheet per date, with fund as a column
+        for date in final_df['Date'].unique():
+            df_date = final_df[final_df['Date'] == date]
+            df_date.to_excel(writer, sheet_name=f'Date_{date}', index=False)
+    
+    elif group_by_fund == 1 and group_by_date == 1:
+        # Group by both fund and date (default behavior): one sheet per combination
+        for date in dates:
+            for fund in funds:
+                df_comb = final_df[(final_df['Fund'] == fund) & (final_df['Date'] == date)]
+                sheet_name = f'{fund}_{date}'
+                df_comb.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    else:
+        # No grouping: write everything into one sheet
+        final_df.to_excel(writer, sheet_name='All_Data', index=False)
+
+# Optionally, save the final DataFrame to a CSV as well
+final_df.to_csv('1229bll_grouped.csv', index=False)
