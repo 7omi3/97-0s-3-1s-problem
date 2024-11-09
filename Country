@@ -1,0 +1,56 @@
+import pandas as pd
+
+def process_funds(file_path):
+    # Load the original Excel file with multiple sheets
+    original_data = pd.read_excel(file_path, sheet_name=None)
+    
+    # Prepare an empty dictionary to store processed data for each fund
+    processed_data = {}
+
+    # Loop through each tab (fund) in the original file
+    for fund_name, df in original_data.items():
+        # Drop the specified columns
+        df = df.drop(columns=['Fund', 'cusip', 'cntry_of_risk'])
+        
+        # Filter out rows where 'parent' is 0
+        df = df[df['parent'] != 0].reset_index(drop=True)
+        
+        # Initialize a dictionary to collect country data
+        country_data = {}
+        
+        # Loop through rows to structure data as specified
+        for i, row in df.iterrows():
+            if row['parent'] == 1:
+                # Each time we find a 'parent' of 1, start a new country entry
+                country_data = {}
+                country_name = row['country']
+                pct_mv_value = row['pct_mv']
+                
+                # Assign the country with pct_mv value
+                country_data[country_name] = pct_mv_value
+                
+                # Look at the next rows where parent corresponds to the index of the row
+                for j in range(i + 1, len(df)):
+                    if df.loc[j, 'parent'] == i + 1:
+                        next_country = df.loc[j, 'country']
+                        next_pct_mv = df.loc[j, 'pct_mv']
+                        country_data[next_country] = next_pct_mv
+                    else:
+                        # Stop if the next row's parent does not match the index of the last 'parent == 1' row
+                        break
+                
+                # Store the country data in processed_data for the new sheet
+                if fund_name not in processed_data:
+                    processed_data[fund_name] = []
+                processed_data[fund_name].append(country_data)
+    
+    # Create a new Excel writer for the new file
+    with pd.ExcelWriter('processed_funds.xlsx') as writer:
+        # Write each fund's processed data to a separate sheet
+        for fund, data in processed_data.items():
+            # Convert list of dictionaries to DataFrame
+            fund_df = pd.DataFrame(data)
+            fund_df.to_excel(writer, sheet_name=fund, index=False)
+
+# Example usage
+process_funds('path_to_your_original_file.xlsx')
