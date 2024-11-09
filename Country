@@ -1,56 +1,57 @@
 import pandas as pd
 
-def process_funds(file_path):
-    # Load the original Excel file with multiple sheets
-    original_data = pd.read_excel(file_path, sheet_name=None)
-    
-    # Prepare an empty dictionary to store processed data for each fund
-    processed_data = {}
+def process_excel_file(input_file, output_file):
+    # Read the Excel file with all sheets
+    xls = pd.ExcelFile(input_file)
+    sheet_names = xls.sheet_names
 
-    # Loop through each tab (fund) in the original file
-    for fund_name, df in original_data.items():
-        # Drop the specified columns
+    # Create a Pandas Excel writer using XlsxWriter as the engine
+    writer = pd.ExcelWriter(output_file, engine='xlsxwriter')
+
+    for sheet_name in sheet_names:
+        # Read each sheet into a DataFrame
+        df = pd.read_excel(xls, sheet_name=sheet_name)
+
+        # Remove unwanted columns
         df = df.drop(columns=['Fund', 'cusip', 'cntry_of_risk'])
-        
-        # Filter out rows where 'parent' is 0
-        df = df[df['parent'] != 0].reset_index(drop=True)
-        
-        # Initialize a dictionary to collect country data
-        country_data = {}
-        
-        # Loop through rows to structure data as specified
-        for i, row in df.iterrows():
-            if row['parent'] == 1:
-                # Each time we find a 'parent' of 1, start a new country entry
-                country_data = {}
-                country_name = row['country']
-                pct_mv_value = row['pct_mv']
-                
-                # Assign the country with pct_mv value
-                country_data[country_name] = pct_mv_value
-                
-                # Look at the next rows where parent corresponds to the index of the row
-                for j in range(i + 1, len(df)):
-                    if df.loc[j, 'parent'] == i + 1:
-                        next_country = df.loc[j, 'country']
-                        next_pct_mv = df.loc[j, 'pct_mv']
-                        country_data[next_country] = next_pct_mv
-                    else:
-                        # Stop if the next row's parent does not match the index of the last 'parent == 1' row
-                        break
-                
-                # Store the country data in processed_data for the new sheet
-                if fund_name not in processed_data:
-                    processed_data[fund_name] = []
-                processed_data[fund_name].append(country_data)
-    
-    # Create a new Excel writer for the new file
-    with pd.ExcelWriter('processed_funds.xlsx') as writer:
-        # Write each fund's processed data to a separate sheet
-        for fund, data in processed_data.items():
-            # Convert list of dictionaries to DataFrame
-            fund_df = pd.DataFrame(data)
-            fund_df.to_excel(writer, sheet_name=fund, index=False)
 
-# Example usage
-process_funds('path_to_your_original_file.xlsx')
+        # Remove rows where parent is 0
+        df = df[df['parent'] != 0].reset_index(drop=True)
+
+        # Get the portfolio ticker for naming the new sheet
+        portfolio_ticker = df['portfolio_ticker'].iloc[0]
+
+        # Initialize a list to store the results
+        result_rows = []
+
+        # Iterate over the DataFrame
+        for idx, row in df.iterrows():
+            if row['parent'] == 1:
+                parent_pct_mv = row['pct_mv']
+                parent_index = row['index']
+
+                # Find child rows where parent equals the current index
+                child_rows = df[df['parent'] == parent_index]
+
+                if not child_rows.empty:
+                    # Get the country from the next row (first child)
+                    country = child_rows.iloc[0]['country']
+
+                    # Append the result
+                    result_rows.append({'Country': country, 'Pct_MV': parent_pct_mv})
+
+        # Create a DataFrame from the result rows
+        result_df = pd.DataFrame(result_rows)
+
+        # Write the result DataFrame to the new Excel file with the portfolio ticker as sheet name
+        result_df.to_excel(writer, sheet_name=portfolio_ticker, index=False)
+
+    # Save the new Excel file
+    writer.save()
+    print(f"Processed data has been saved to {output_file}")
+
+# Usage example
+input_excel_file = 'original_file.xlsx'  # Replace with your input file name
+output_excel_file = 'processed_file.xlsx'  # Replace with your desired output file name
+
+process_excel_file(input_excel_file, output_excel_file)
