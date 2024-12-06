@@ -1,0 +1,93 @@
+import pandas as pd
+
+def collect_unique_columns(excel_file):
+    """
+    Collects all unique column names from the second row across all sheets.
+    """
+    # Load the Excel file
+    xls = pd.ExcelFile(excel_file)
+    unique_columns = set()
+
+    for sheet in xls.sheet_names:
+        # Read the second row (header)
+        df = pd.read_excel(excel_file, sheet_name=sheet, header=None, nrows=2)
+        if df.empty:
+            continue
+        # Get columns from the second row (index 1)
+        columns = df.iloc[1, 1:]  # Skip A2 which is 'strategy'
+        unique_columns.update(columns.dropna().tolist())
+
+    return sorted(unique_columns)
+
+def collect_data_for_year(excel_file, year, unique_columns):
+    """
+    Collects data for the specified year from each sheet.
+    Missing columns are filled with 0.
+    """
+    xls = pd.ExcelFile(excel_file)
+    data_rows = []
+
+    for sheet in xls.sheet_names:
+        # Read the sheet with header in the second row
+        df = pd.read_excel(excel_file, sheet_name=sheet, header=1)  # header=1 sets row 2 as header
+        # Set 'strategy' as the index if it's in column A
+        if 'strategy' in df.columns:
+            df.set_index('strategy', inplace=True)
+        else:
+            print(f"'strategy' column not found in sheet: {sheet}. Skipping this sheet.")
+            continue
+        # Find the row corresponding to the specified year
+        if year in df.index:
+            row = df.loc[year]
+            # Create a dictionary with unique columns, fill missing with 0
+            data = {col: row.get(col, 0) for col in unique_columns}
+            # Alternatively, ensure numerical data is filled with 0
+            # data = {col: (row[col] if col in row else 0) for col in unique_columns}
+            # Add an identifier for the sheet
+            data['Sheet Name'] = sheet
+            data_rows.append(data)
+        else:
+            print(f"Year {year} not found in sheet: {sheet}. Skipping this sheet.")
+
+    # Create a DataFrame from the collected data
+    result_df = pd.DataFrame(data_rows)
+    # Replace NaN with 0 in case any remain
+    result_df.fillna(0, inplace=True)
+    # Optional: Reorder columns to have 'Sheet Name' first
+    cols = ['Sheet Name'] + [col for col in unique_columns]
+    result_df = result_df[cols]
+
+    return result_df
+
+def main():
+    # Input Excel file path
+    input_file = input("Enter the path to the input Excel file (e.g., data.xlsx): ").strip()
+
+    # Collect unique columns
+    print("Collecting unique column names from all sheets...")
+    unique_cols = collect_unique_columns(input_file)
+    print(f"Unique columns found: {unique_cols}")
+
+    # Specify the year
+    year = input("Enter the year for which you want to collect data (e.g., 2023): ").strip()
+
+    # Collect data for the specified year
+    print(f"Collecting data for the year {year}...")
+    consolidated_data = collect_data_for_year(input_file, year, unique_cols)
+
+    if consolidated_data.empty:
+        print("No data found for the specified year across all sheets.")
+        return
+
+    # Fill any remaining NaN with 0 (additional safety)
+    consolidated_data.fillna(0, inplace=True)
+
+    # Output Excel file path
+    output_file = input("Enter the path for the output Excel file (e.g., consolidated_data.xlsx): ").strip()
+
+    # Write the consolidated data to a new Excel file
+    consolidated_data.to_excel(output_file, index=False)
+    print(f"Data successfully written to {output_file}")
+
+if __name__ == "__main__":
+    main()
