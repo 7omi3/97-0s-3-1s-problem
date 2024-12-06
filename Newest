@@ -4,14 +4,20 @@ import os
 def collect_unique_columns(excel_file):
     """
     Collects all unique column names from the second row across all sheets.
+    
+    Parameters:
+        excel_file (str): Path to the input Excel file.
+    
+    Returns:
+        list: Sorted list of unique column names.
     """
     # Load the Excel file
     xls = pd.ExcelFile(excel_file)
     unique_columns = set()
 
     for sheet in xls.sheet_names:
-        # Read the first two rows to access the second row headers
         try:
+            # Read the first two rows to access the second row headers
             df = pd.read_excel(excel_file, sheet_name=sheet, header=None, nrows=2)
         except Exception as e:
             print(f"Error reading sheet '{sheet}': {e}. Skipping this sheet.")
@@ -23,7 +29,7 @@ def collect_unique_columns(excel_file):
 
         # Get columns from the second row (index 1), starting from the second column (B)
         columns = df.iloc[1, 1:]  # Skip A2 which is 'strategy'
-        # Drop NaN values and convert to list
+        # Drop NaN values, convert to string, strip whitespace, and collect as list
         columns = columns.dropna().astype(str).str.strip().tolist()
         unique_columns.update(columns)
 
@@ -33,43 +39,49 @@ def collect_data_for_year(excel_file, year, unique_columns):
     """
     Collects data for the specified year from each sheet.
     Missing columns are filled with 0.
+    
+    Parameters:
+        excel_file (str): Path to the input Excel file.
+        year (str or int): The year for which data needs to be collected.
+        unique_columns (list): List of unique column names across all sheets.
+    
+    Returns:
+        pd.DataFrame: Consolidated DataFrame with data from all sheets for the specified year.
     """
     xls = pd.ExcelFile(excel_file)
     data_rows = []
 
     for sheet in xls.sheet_names:
-        # Read the sheet with header in the second row
         try:
+            # Read the sheet with header in the second row
             df = pd.read_excel(excel_file, sheet_name=sheet, header=1)  # header=1 sets row 2 as header
         except Exception as e:
             print(f"Error reading sheet '{sheet}': {e}. Skipping this sheet.")
             continue
 
-        # Check if 'strategy' column exists
-        if 'strategy' not in df.columns.str.lower():
+        # Check if 'strategy' column exists (case-insensitive)
+        strategy_cols = [col for col in df.columns if str(col).strip().lower() == 'strategy']
+        if not strategy_cols:
             print(f"'strategy' column not found in sheet: '{sheet}'. Skipping this sheet.")
             continue
 
-        # Normalize column names to ensure 'strategy' is correctly identified
-        df.columns = [col.lower() if isinstance(col, str) else col for col in df.columns]
-
-        # Rename 'strategy' column to 'strategy' in case of case differences
-        df.rename(columns=lambda x: 'strategy' if str(x).strip().lower() == 'strategy' else x, inplace=True)
+        # Assume the first 'strategy' column is the relevant one
+        strategy_col = strategy_cols[0]
 
         # Set 'strategy' as the index
-        df.set_index('strategy', inplace=True)
+        df.set_index(strategy_col, inplace=True)
 
-        # Ensure the year is of the same type as the index
-        if isinstance(df.index[0], int) or isinstance(df.index[0], float):
+        # Normalize year format based on the index type
+        if pd.api.types.is_numeric_dtype(df.index):
             try:
-                year_key = float(year) if '.' in str(year) else int(year)
+                year_key = float(year) if isinstance(year, str) and '.' in year else int(year)
             except ValueError:
                 print(f"Year '{year}' is not compatible with sheet '{sheet}' index type. Skipping this sheet.")
                 continue
         else:
             year_key = str(year).strip()
 
-        # Find the row corresponding to the specified year
+        # Check if the specified year exists in the 'strategy' index
         if year_key in df.index:
             row = df.loc[year_key]
             # Create a dictionary with unique columns, fill missing with 0
@@ -87,7 +99,7 @@ def collect_data_for_year(excel_file, year, unique_columns):
     # Create a DataFrame from the collected data
     result_df = pd.DataFrame(data_rows)
 
-    # Replace any remaining NaN with 0
+    # Replace any remaining NaN with 0 (additional safety)
     result_df.fillna(0, inplace=True)
 
     # Reorder columns to have 'Sheet Name' first
@@ -102,16 +114,16 @@ def main():
     # ================================
 
     # Path to the input Excel file
-    # Ensure that the path is correct. You can use absolute or relative paths.
-    input_file = "path/to/your/input_file.xlsx"
+    # Replace with your actual file path. Use raw strings (r"") or double backslashes (\\) for Windows paths.
+    input_file = r"C:\Path\To\Your\Input_File.xlsx"
 
     # Year for which data needs to be collected
     # Ensure that the year format matches the 'strategy' column in your Excel sheets
-    year = "2023"  # Example: "2023"
+    year = "2023"  # Example: "2023" or 2023
 
     # Path for the output Excel file
     # The script will overwrite the file if it already exists
-    output_file = "path/to/your/output_file.xlsx"
+    output_file = r"C:\Path\To\Your\Output_File.xlsx"
 
     # ================================
     # === End of Configuration =======
